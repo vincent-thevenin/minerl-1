@@ -92,7 +92,7 @@ setuptools.setup(
       description='MineRL environment and data loader for reinforcement learning from human demonstration in Minecraft',
       long_description=markdown,
       long_description_content_type="text/markdown",
-      url='http://github.com/minerllabs/minerl',
+      url='https://github.com/vincent-thevenin/minerl-1',
       author='MineRL Labs',
       author_email='minerl@andrew.cmu.edu',
       license='MIT',
