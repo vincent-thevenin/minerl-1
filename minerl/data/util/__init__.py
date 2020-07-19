@@ -1,4 +1,6 @@
 import os.path
+import os
+import signal
 import sys
 import urllib
 import atexit
@@ -13,6 +15,7 @@ import numpy as np
 from urllib.error import HTTPError
 
 import queue
+
 import concurrent.futures
 import threading
 from typing import Callable, Any
@@ -171,32 +174,51 @@ class OrderedJobStreamer(threading.Thread):
         self.executor = executor
         self.max_workers = max_workers
 
+        self.ex = executor
+        self.results = None
+    def __enter__(self):
+        self.start()
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.shutdown()
+        if self.ex is not None:
+            if self.ex._processes is not None:
+                for process in  self.ex._processes.values():
+                    try:
+                        process.kill()
+                        #os.kill(process.pid, signal.SIGKILL)
+                    except:
+                        print("couldn;t kill process")
+                        pass
+            
+            self.ex.shutdown(wait=True)
+        atexit.unregister(self.end_processes)
+
+    def end_processes(self):
+        if self.ex is not None:
+            if self.ex._processes is not None:
+                for process in  self.ex._processes.values():
+                    try:
+                        process.kill()
+                    except:
+                        print("couldn;t kill process")
+                        pass
+            self.ex.shutdown(wait=False)
+
     def _ordered_job_streamer(self):
 
-        
-        ex = self.executor(self.max_workers)
+        #self.ex = self.executor(self.max_workers)
 
-        def end_processes():
-            if ex is not None:
-                if ex._processes is not None:
-                    for process in  ex._processes.values():
-                        try:
-                            process.kill()
-                        except:
-                            print("couldn;t kill process")
-                            pass
-                ex.shutdown(wait=False)
-        atexit.register(end_processes)
+        atexit.register(self.end_processes)
 
         try:
-            results = queue.Queue()
+            self.results = queue.Queue()
             # Enqueue jobs
-            for arg in tqdm.tqdm(self.job_args):
-                results.put(ex.submit(self.job, arg))
+            for arg in self.job_args:#tqdm.tqdm(self.job_args):
+                self.results.put(self.ex.submit(self.job, arg))
 
             # Dequeu jobs and push them to a queue.
-            while not results.empty() and not self._should_exit:
-                future = results.get()
+            while not self.results.empty() and not self._should_exit:
+                future = self.results.get()
                 if future.exception():
                     raise future.exception()
                 res = future.result()
@@ -207,16 +229,16 @@ class OrderedJobStreamer(threading.Thread):
                         break
                     except queue.Full:
                         pass
-                        
+
             return
         except Exception:
             # abort workers immediately if anything goes wrong
-            for process in ex._processes.values():
+            for process in self.ex._processes.values():
                 process.kill()
             
             raise
-        finally:
-            ex.shutdown(wait=False)
+        """finally:
+            self.ex.shutdown(wait=False)"""
 
 
 
@@ -278,3 +300,4 @@ def minibatch_gen(traj_iter, batch_size, nsteps):
             yield multimap(stack, *rettraj)
     except StopIteration:
         return
+

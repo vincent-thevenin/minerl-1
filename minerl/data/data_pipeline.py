@@ -393,19 +393,28 @@ class DataPipeline:
 
             jobs = [(f, -1, None) for f in self._get_all_valid_recordings(self.data_dir)]
             np.random.shuffle(jobs)
-            trajectory_loader = minerl.data.util.OrderedJobStreamer(
+            """trajectory_loader = minerl.data.util.OrderedJobStreamer(
                 job,
                 jobs,
                 trajectory_queue,
                 # executor=concurrent.futures.ThreadPoolExecutor,
                 max_workers=preload_buffer_size
             )
-            trajectory_loader.start()
+            trajectory_loader.start()"""
+            ex = concurrent.futures.ProcessPoolExecutor(preload_buffer_size) 
+            with minerl.data.util.OrderedJobStreamer(
+                job,
+                jobs,
+                trajectory_queue,
+                #executor=concurrent.futures.ThreadPoolExecutor,
+                ex,
+                max_workers=preload_buffer_size
+            ) as trajectory_loader:
+                for seg_batch in minibatch_gen(traj_iter(), batch_size=batch_size, nsteps=seq_len):
+                    yield seg_batch['obs'], seg_batch['act'], seg_batch['reward'], seg_batch['next_obs'], seg_batch['done']
 
-            for seg_batch in minibatch_gen(traj_iter(), batch_size=batch_size, nsteps=seq_len):
-                yield seg_batch['obs'], seg_batch['act'], seg_batch['reward'], seg_batch['next_obs'], seg_batch['done']
-
-            trajectory_loader.shutdown()
+            """finally:
+                trajectory_loader.shutdown()"""
 
     @staticmethod
     def _is_blacklisted(path):
@@ -487,3 +496,4 @@ class DataPipeline:
 
 def job(arg):
     return DataPipeline._load_data_pyfunc(*arg)
+
